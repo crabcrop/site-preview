@@ -127,9 +127,9 @@ async function init() {
       ch.position.set(side * 0.55, 1.14, 0.9); ch.rotation.y = side * 0.45;
       snap.add(ch);
     });
-    // smile
-    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.018, 8, 24, Math.PI * 0.8), MAT.smile);
-    smile.position.set(0, 1.1, 0.965); smile.rotation.z = Math.PI * 1.1;
+    // smile (proud of the body surface, or it sinks out of sight)
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 8, 24, Math.PI * 0.8), MAT.smile);
+    smile.position.set(0, 1.17, 1.0); smile.rotation.z = Math.PI * 1.1;
     snap.add(smile);
 
     // eyes on stalks
@@ -170,9 +170,9 @@ async function init() {
     }
     const armBig = new THREE.Group();
     const bigUpper = cap(0.125, 0.26, MAT.coral); bigUpper.position.y = 0.16;
-    const big = makeClaw(1, true); big.clawG.position.y = 0.44;
+    const big = makeClaw(1.14, true); big.clawG.position.y = 0.44;
     armBig.add(bigUpper, big.clawG);
-    armBig.position.set(-0.98, 1.32, 0.18); armBig.rotation.z = -0.55;
+    armBig.position.set(-1.1, 1.4, 0.3); armBig.rotation.z = -0.38;
     snap.add(armBig);
     rig.armBig = armBig; rig.bigThumb = big.thumbPivot;
 
@@ -186,7 +186,7 @@ async function init() {
     const printMats = [MAT.frameCream, MAT.frameCream, MAT.frameCream, MAT.frameCream,
       new THREE.MeshStandardMaterial({ map: printTexture(), roughness: 0.85 }), MAT.frameCream];
     const print = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.45, 0.035), printMats);
-    print.position.set(1.3, 0.72, 0.62); print.rotation.set(-0.06, -0.28, 0.04);
+    print.position.set(1.24, 0.74, 0.6); print.rotation.set(-0.06, -0.28, 0.04);
     snap.add(print); rig.print = print;
 
     snap.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
@@ -290,7 +290,7 @@ async function init() {
         if (scene3 && scene3.keyPulse) scene3.keyPulse();
       },
       wave() {
-        const arm = rig.armBig, base = -0.55; let n = 0;
+        const arm = rig.armBig, base = -0.38; let n = 0;
         tween(1.15, k => { arm.rotation.z = base + Math.sin(k * Math.PI * 5) * 0.32 * (1 - k * 0.55); }, t => t,
           () => { arm.rotation.z = base; });
       },
