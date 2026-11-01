@@ -26,7 +26,7 @@ async function init() {
   function stitchTexture() {
     const c = document.createElement("canvas"); c.width = c.height = 256;
     const g = c.getContext("2d");
-    g.fillStyle = "#8a8a8a"; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = "#cfcfcf"; g.fillRect(0, 0, 256, 256);
     const row = 32;
     for (let y = 0; y < 256 + row; y += row) {
       const off = (Math.round(y / row) % 2) * 16;
@@ -74,16 +74,17 @@ async function init() {
   /* ---------- materials: claymorphism, matte and plump ---------- */
   function clay(color, opts) {
     return new THREE.MeshPhysicalMaterial(Object.assign({
-      color, roughness: 0.94, metalness: 0,
+      color, roughness: 1.0, metalness: 0,
       sheen: 0.7, sheenColor: new THREE.Color(0xFFD9CF), sheenRoughness: 0.55,
-      bumpMap: stitch, bumpScale: 0.5
+      bumpMap: stitch, bumpScale: 0.5,
+      roughnessMap: stitch
     }, opts || {}));
   }
   const MAT = {
     coral: clay(0xE14E36),
     coralDark: clay(0xCB3E26),
     cream: clay(0xF5E8D0, { bumpScale: 0.25 }),
-    belly: new THREE.MeshPhysicalMaterial({ map: spiralTexture(), roughness: 0.92, sheen: 0.5, sheenColor: new THREE.Color(0xFFF3D6), sheenRoughness: 0.6 }),
+    belly: new THREE.MeshPhysicalMaterial({ map: spiralTexture(), roughness: 1.0, roughnessMap: stitch, bumpMap: stitch, bumpScale: 0.3, sheen: 0.5, sheenColor: new THREE.Color(0xFFF3D6), sheenRoughness: 0.6 }),
     peach: clay(0xF2A868, { bumpScale: 0.2 }),
     pink: clay(0xF6A8B8, { bumpScale: 0.15 }),
     eyeWhite: new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.32 }),
