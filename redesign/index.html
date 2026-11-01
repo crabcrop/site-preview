@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crabcrop: Blazing Fast On-Demand Image Service</title>
+<meta name="description" content="Crabcrop is a Rust-built, on-demand image API. Resizes, crops, converts, and filters straight from a signed URL.">
+<style>
+@font-face{font-family:"Fraunces";src:url("assets/fonts/fraunces-900.woff2") format("woff2");
+  font-weight:900;font-style:normal;font-display:swap}
+@font-face{font-family:"Fraunces";src:url("assets/fonts/fraunces-600.woff2") format("woff2");
+  font-weight:600;font-style:normal;font-display:swap}
+:root{
+  --shell:#FBF2DF; --foam:#FFFFFF; --ink:#142832; --ink-soft:#43565F;
+  --coral:#E8482F; --coral-deep:#B92F1B; --coral-soft:#FFD9CF;
+  --sun:#FFB020; --sun-soft:#FFD88A;
+  --tide:#0E7C7B; --tide-deep:#084F57; --abyss:#0D202E;
+  --sea-glass:#8FE3E1; --shallows:#DDEEE6; --anatomy:#C4E4D8;
+  --sig:#C9A7FF; --src:#9FE8B0; --fmt:#A9C6FF;
+  --ease:cubic-bezier(0.23,1,0.32,1);
+  --sans:ui-sans-system,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --display:"Fraunces",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--shell);color:var(--ink);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+::selection{background:var(--coral-deep);color:var(--foam)}
+a{color:var(--coral-deep);text-underline-offset:3px}
+input,textarea{caret-color:var(--coral-deep)}
+html{scrollbar-color:var(--tide-deep) var(--shell)}
+::-webkit-scrollbar{width:12px}
+::-webkit-scrollbar-track{background:var(--shell)}
+::-webkit-scrollbar-thumb{background:var(--tide-deep);border-radius:8px;border:3px solid var(--shell)}
+:focus-visible{outline:3px solid var(--tide);outline-offset:3px;border-radius:6px}
+img{display:block;max-width:100%}
+button{font:inherit;cursor:pointer}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;justify-content:space-between;
+  padding:20px clamp(20px,5vw,56px);position:relative;z-index:5}
+.wordmark{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:900;font-size:24px;
+  letter-spacing:-0.01em;color:var(--ink);text-decoration:none}
+.wordmark .claw{width:30px;height:30px;flex:none}
+header nav a{color:var(--ink);text-decoration:none;font-weight:600;font-size:15px}
+header nav a:hover{color:var(--coral-deep)}
+@media (hover:hover){ header nav a{transition:color 200ms var(--ease)} }
+
+/* ---------- hero: The Surface ---------- */
+.hero{position:relative;padding:clamp(16px,4vh,44px) clamp(20px,5vw,56px) 0;overflow:hidden}
+.bubbles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.bubbles i{position:absolute;bottom:-40px;border:2px solid rgba(14,124,123,.35);
+  border-radius:50%;animation:rise linear infinite}
+.bubbles i:nth-child(1){left:6%;width:14px;height:14px;animation-duration:11s;animation-delay:0s}
+.bubbles i:nth-child(2){left:14%;width:8px;height:8px;animation-duration:14s;animation-delay:3s}
+.bubbles i:nth-child(3){left:47%;width:10px;height:10px;animation-duration:12s;animation-delay:6s}
+.bubbles i:nth-child(4){left:88%;width:16px;height:16px;animation-duration:13s;animation-delay:2s}
+.bubbles i:nth-child(5){left:94%;width:7px;height:7px;animation-duration:10s;animation-delay:5s}
+@keyframes rise{to{transform:translateY(-110vh) translateX(14px)}}
+
+.hero-grid{position:relative;display:grid;grid-template-columns:1fr;gap:40px;z-index:2}
+.eyebrow{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--tide-deep);display:flex;align-items:center;gap:10px;margin:0 0 22px}
+.eyebrow::before{content:"";width:26px;height:2px;background:var(--coral)}
+h1{font-family:var(--display);font-size:clamp(46px,6.2vw,76px);line-height:1.02;letter-spacing:-0.015em;
+  font-weight:900;margin:0 0 22px;max-width:11ch;text-wrap:balance}
+.sub{font-size:clamp(17px,1.6vw,20px);line-height:1.55;color:var(--ink-soft);
+  max-width:52ch;margin:0 0 30px}
+.ctas{display:flex;flex-wrap:wrap;gap:14px}
+.btn{display:inline-block;text-decoration:none;font-weight:700;font-size:16px;
+  padding:14px 26px;border-radius:999px;border:2px solid var(--ink)}
+.btn.primary{background:var(--coral-deep);border-color:#7E1F10;color:var(--foam);
+  box-shadow:5px 5px 0 var(--ink)}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:active{transform:scale(0.97)}
+@media (hover:hover){
+  .btn{transition:transform 200ms var(--ease),background-color 200ms var(--ease)}
+  .btn.primary:hover{background:#9E2716}
+}
+
+/* the surface scene */
+.scene{position:relative;margin-top:6px}
+.frame{position:relative;background:var(--foam);padding:12px;border-radius:10px;
+  box-shadow:10px 12px 0 rgba(20,40,50,.16);transform:rotate(1.2deg)}
+.frame .photo{position:relative;overflow:hidden;border-radius:4px;aspect-ratio:1/1;background:#FFFFFF}
+.frame .photo.wide{aspect-ratio:3/2}
+.frame .photo.tall{aspect-ratio:4/5}
+.shelf{position:relative;height:26px;margin:14px -14px 0;border-radius:50%;
+  background:#EDD9A3;overflow:hidden;box-shadow:0 10px 14px rgba(20,40,50,.10)}
+.caustic{position:absolute;inset:-40%;
+  background:radial-gradient(circle at 30% 50%, rgba(255,255,255,.5), transparent 34%),radial-gradient(circle at 72% 42%, rgba(255,255,255,.4), transparent 30%); /* taste-skill-ignore: caustic light is the scene's material, sunlight through water on sand, not a UI fill */
+  animation:caustic 9s ease-in-out infinite alternate;opacity:.55}
+@keyframes caustic{from{transform:translateX(-3%) translateY(-2%)}to{transform:translateX(3%) translateY(2%)}}
+.pin{position:absolute;font-family:var(--mono);font-size:12.5px;background:var(--ink);
+  color:var(--foam);padding:6px 11px;border-radius:999px;box-shadow:3px 3px 0 rgba(20,40,50,.25);z-index:3}
+.pin.op{top:20px;left:-8px;background:var(--coral-deep)}
+.pin.fmt{top:64px;right:-10px;background:var(--tide-deep)}
+.bubble{position:absolute;right:14px;bottom:14px;width:max-content;max-width:210px;z-index:5;
+  background:var(--foam);border:2px solid var(--ink);border-radius:14px;padding:8px 13px;
+  font-family:var(--mono);font-size:13.5px;color:var(--ink);
+  opacity:0;transform:scale(.95) translateY(6px);pointer-events:none}
+.bubble.show{opacity:1;transform:scale(1) translateY(0)}
+@media (hover:hover){ .bubble{transition:opacity 220ms var(--ease),transform 220ms var(--ease)} }
+.caption{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);margin-top:16px;text-align:right}
+
+/* the URL builder waterline */
+.builder{position:relative;z-index:2;margin:clamp(44px,7vh,72px) 0 0;
+  background:var(--foam);border:2px solid var(--ink);border-radius:16px;
+  box-shadow:8px 8px 0 rgba(20,40,50,.14);padding:20px clamp(16px,3vw,28px) 22px}
+.builder .b-label{font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--tide-deep);margin:0 0 12px}
+.url{font-family:var(--mono);font-size:clamp(13.5px,1.55vw,16.5px);line-height:2.1;
+  word-break:break-all;color:var(--ink)}
+.url .host{color:var(--ink-soft)}
+.url .part-sig{background:var(--sig);border-radius:6px;padding:2px 6px}
+.url .part-src{background:var(--src);border-radius:6px;padding:2px 6px}
+.seg{font-family:var(--mono);font-size:inherit;background:var(--coral-soft);color:var(--ink);
+  border:2px solid var(--coral-deep);border-radius:8px;padding:2px 8px;margin:0 1px}
+.seg:active{transform:scale(0.97)}
+@media (hover:hover){ .seg{transition:transform 160ms var(--ease),background-color 160ms var(--ease)}
+  .seg:hover{background:var(--shell-pink,#FFB59F)} }
+.builder .b-row{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:14px}
+.copybtn{background:var(--ink);color:var(--foam);border:2px solid var(--ink);border-radius:999px;
+  padding:9px 20px;font-weight:700;font-size:14.5px}
+.copybtn:active{transform:scale(0.97)}
+@media (hover:hover){ .copybtn{transition:transform 160ms var(--ease)} }
+.builder .hint{font-size:13.5px;color:var(--ink-soft);margin:0}
+
+/* ---------- section 2 stub: The Shallows ---------- */
+.shallows{position:relative;margin-top:0;padding:0 clamp(20px,5vw,56px) 0;
+  background:var(--shallows);overflow:hidden}
+.wave{display:block;width:100%;height:clamp(22px,4vw,42px)}
+.shallows .inner{padding:clamp(56px,10vh,96px) 0 clamp(70px,11vh,110px)}
+.shallows .eyebrow{color:var(--tide-deep)}
+.shallows h2{font-family:var(--display);font-size:clamp(38px,4.6vw,58px);line-height:1.05;letter-spacing:-0.012em;
+  font-weight:600;margin:0 0 16px;max-width:16ch;text-wrap:balance}
+.shallows .lede{font-size:clamp(16.5px,1.5vw,19px);line-height:1.55;color:var(--ink-soft);max-width:56ch;margin:0}
+.dock-toy{position:absolute;right:-34px;top:110px;width:190px;transform:rotate(4deg);
+  filter:drop-shadow(5px 8px 0 rgba(20,40,50,.12))}
+.slider-wrap{position:relative;max-width:860px;margin-top:44px}
+.slider{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:16/9;
+  box-shadow:10px 12px 0 rgba(8,79,87,.18);background:#BFD8CE;touch-action:none}
+.slider img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.slider .after{filter:grayscale(1) contrast(1.06)}
+.slider .after.sepia{filter:sepia(.65) contrast(1.03)}
+.slider .after.warm{filter:saturate(1.35) contrast(1.05) brightness(1.04)}
+.slider .clip{position:absolute;inset:0;clip-path:inset(0 0 55% 0)}
+.divider{position:absolute;left:0;right:0;top:45%;height:3px;background:var(--foam);
+  box-shadow:0 1px 6px rgba(20,40,50,.4)}
+.handle{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
+  background:var(--coral-deep);color:var(--foam);border:2px solid var(--foam);border-radius:999px;
+  font-family:var(--mono);font-size:12px;padding:7px 13px;box-shadow:0 3px 10px rgba(20,40,50,.35);
+  display:flex;align-items:center;gap:7px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.chip{background:var(--foam);border:2px solid var(--ink);border-radius:999px;
+  padding:8px 18px;font-weight:600;font-size:14.5px}
+.chip[aria-pressed="true"]{background:var(--tide);border-color:var(--tide-deep);color:var(--foam)}
+.chip:active{transform:scale(0.97)}
+@media (hover:hover){ .chip{transition:transform 160ms var(--ease),background-color 160ms var(--ease)} }
+.fineprint{font-size:13px;color:var(--ink-soft);margin-top:14px;font-family:var(--mono)}
+
+/* ---------- entrances (only when JS animates) ---------- */
+html.anim .rv{opacity:0;transform:translateY(14px)}
+html.anim .rv.in{opacity:1;transform:none;transition:opacity 420ms var(--ease),transform 420ms var(--ease);
+  transition-delay:var(--rvd,0ms)}
+html.anim .rv-scale{opacity:0;transform:scale(0.98)}
+html.anim .rv-scale.in{opacity:1;transform:scale(1);transition:opacity 520ms var(--ease),transform 520ms var(--ease);
+  transition-delay:var(--rvd,0ms)}
+
+/* ---------- desktop composition ---------- */
+@media (min-width:960px){
+  .hero-grid{grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);gap:clamp(40px,5vw,84px);align-items:center}
+  .scene{margin-top:0;max-width:590px;width:100%;justify-self:end}
+}
+
+/* ---------- mobile composition ---------- */
+@media (max-width:959px){
+  .ctas .btn{flex:1 1 100%;text-align:center}
+  .caption{margin-top:14px;text-align:left}
+  .dock-toy{position:static;width:min(55%,240px);margin:38px auto 0;transform:rotate(3deg)}
+  .slider{aspect-ratio:4/3}
+  .builder .copybtn{width:100%}
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  .bubbles,.caustic{display:none}
+  .frame{transform:none}
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="wordmark" href="#" aria-label="crabcrop home">
+    <svg class="claw" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18" r="11" fill="#E8482F"/><circle cx="11" cy="13" r="4.5" fill="#FBF2DF"/><circle cx="24" cy="6" r="3.4" fill="#E8482F"/><circle cx="8" cy="6" r="3" fill="#E8482F"/></svg>
+    crabcrop
+  </a>
+  <nav aria-label="Sections"><a href="docs.html">Documentation</a></nav>
+</header>
+
+<main>
+<!-- ================= Zone 01: The Surface ================= -->
+<section class="hero" aria-label="Introduction">
+  <div class="bubbles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="hero-grid">
+    <div>
+      <p class="eyebrow rv">Zone 01 · The Surface</p>
+      <h1 class="rv" style="--rvd:70ms">Blazing fast, on-demand images.</h1>
+      <p class="sub rv" style="--rvd:140ms">Crabcrop is a Rust-built, on-demand image API.
+        It resizes, crops, converts, and filters your images straight from a signed URL.
+        One binary, no pre-generated thumbnails, no build step.</p>
+      <div class="ctas rv" style="--rvd:210ms">
+        <a class="btn primary" href="#shallows">Get it running</a>
+        <a class="btn ghost" href="docs.html">Full documentation</a>
+      </div>
+    </div>
+    <div class="scene rv" style="--rvd:160ms">
+      <figure class="frame" style="margin:0">
+        <span class="pin op" id="pinOp">crop:800x800:center</span>
+        <span class="pin fmt" id="pinFmt">format(avif)</span>
+        <div class="photo" id="photoBox">
+          <div id="snapBtn" role="button" tabindex="0" aria-label="Snap the crab. Activate for an operation" style="position:absolute;inset:0;cursor:pointer">
+            <img id="snapImg" src="assets/crabcrop-mascot.webp" alt="Snap, the crabcrop mascot, waving" width="400" height="400" style="width:100%;height:100%;object-fit:cover;object-position:center 38%">
+            <span class="bubble" id="snapBubble" role="status">rotate(90)</span>
+          </div>
+        </div>
+      </figure>
+      <div class="shelf" aria-hidden="true"><div class="caustic"></div></div>
+      <p class="caption">Snap, the crabcrop mascot · Rendered on demand</p>
+    </div>
+  </div>
+
+  <div class="builder rv" style="--rvd:120ms" aria-label="URL builder preview">
+    <p class="b-label">The URL is the API · Tap an operation to change it</p>
+    <p class="url" id="urlLine">
+      <span class="host">https://images.crabcrop.org/</span><span class="part-sig">kX7f2aQ9…</span>/<button class="seg" id="segCrop" type="button" aria-label="Change crop operation">crop:800x800:center</button>/<button class="seg" id="segFmt" type="button" aria-label="Change format operation">format(avif)</button>/<button class="seg" id="segQ" type="button" aria-label="Change quality operation">quality(85)</button>/<span class="part-src">scene-camera.jpg</span>
+    </p>
+    <div class="b-row">
+      <button class="copybtn" id="copyBtn" type="button">Copy the URL</button>
+      <p class="hint">Signed, so only the URLs you mint can render. Change an operation and the frame above keeps up.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Zone 02: The Shallows (stub) ================= -->
+<section class="shallows" id="shallows" aria-label="What it does">
+  <svg class="wave" viewBox="0 0 1440 42" preserveAspectRatio="none" aria-hidden="true"><path d="M0,0 L1440,0 L1440,10 C1200,38 960,6 720,22 C480,38 240,10 0,28 Z" fill="#FBF2DF"/></svg>
+  <div class="inner">
+  <p class="eyebrow rv">Zone 02 · The Shallows</p>
+  <h2 class="rv" style="--rvd:70ms">One photo, every finish.</h2>
+  <p class="lede rv" style="--rvd:140ms">No dashboard, no thumbnail farm. The operation lives in the
+    URL, and the render happens when someone asks for it. Drag the line and see the shape of the idea.</p>
+  <div class="slider-wrap rv-scale" style="--rvd:200ms">
+    <div class="slider" id="slider" role="slider" aria-label="Before and after preview" aria-valuemin="0" aria-valuemax="100" aria-valuenow="45" tabindex="0">
+      <img src="assets/scene-surf.jpg" alt="A surfer at the shore, original photograph" width="1200" height="800">
+      <div class="clip" id="clip"><img class="after" id="afterImg" src="assets/scene-surf.jpg" alt="" aria-hidden="true" width="1200" height="800"></div>
+      <div class="divider" id="divider"></div>
+      <div class="handle" id="handle"><svg width="9" height="12" viewBox="0 0 9 12" aria-hidden="true"><path d="M1 4 L4.5 1 L8 4 M1 8 L4.5 11 L8 8" stroke="#FFFFFF" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>drag</div>
+    </div>
+    <div class="chips" role="group" aria-label="Preview finishes">
+      <button class="chip" type="button" data-f="none" aria-pressed="false">Original finish</button>
+      <button class="chip" type="button" data-f="grayscale" aria-pressed="true">grayscale()</button>
+      <button class="chip" type="button" data-f="sepia" aria-pressed="false">sepia()</button>
+      <button class="chip" type="button" data-f="warm" aria-pressed="false">saturation(135)</button>
+    </div>
+    <p class="fineprint">Visual preview on this page. The real finish is rendered by crabcrop, from the URL.</p>
+  </div>
+  <img class="dock-toy rv" style="--rvd:120ms" src="assets/snap-toy.webp" alt="Snap as a crochet toy, docked at the shallows" width="400" height="400" loading="lazy">
+  </div>
+  <svg class="wave" viewBox="0 0 1440 42" preserveAspectRatio="none" aria-hidden="true"><path d="M0,42 L1440,42 L1440,32 C1200,4 960,36 720,20 C480,4 240,32 0,14 Z" fill="#C4E4D8"/></svg>
+</section>
+</main>
+
+<script>
+(function(){
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* Reduced motion: swap the animated Snap art for the sealed still. */
+  function applyMotionPref(){
+    var still = reduce.matches;
+    var snap = document.getElementById("snapImg");
+    var toy = document.querySelector(".dock-toy");
+    if (snap) snap.src = still ? "assets/snap-sealed.webp" : "assets/crabcrop-mascot.webp";
+    if (toy) toy.src = still ? "assets/snap-sealed.webp" : "assets/snap-toy.webp";
+  }
+  applyMotionPref();
+  if (reduce.addEventListener) reduce.addEventListener("change", applyMotionPref);
+
+  /* Entrances: one-shot reveals, only when motion is welcome. */
+  if (!reduce.matches && "IntersectionObserver" in window){
+    document.documentElement.classList.add("anim");
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, {threshold: 0.12});
+    document.querySelectorAll(".rv, .rv-scale").forEach(function(el){ io.observe(el); });
+  }
+
+  /* ---- URL builder: real grammar, cycled values ---- */
+  var crops = [
+    {text:"crop:800x800:center", frame:"square"},
+    {text:"crop:1200x630:smart", frame:"wide"},
+    {text:"crop:800x1000:top", frame:"tall"}
+  ];
+  var fmts = ["format(avif)","format(webp)","format(jxl)","format(auto)"];
+  var quals = ["quality(85)","quality(70)","quality(95)"];
+  var state = {crop:0, fmt:0, q:0};
+  var segCrop = document.getElementById("segCrop"),
+      segFmt = document.getElementById("segFmt"),
+      segQ = document.getElementById("segQ"),
+      pinOp = document.getElementById("pinOp"),
+      pinFmt = document.getElementById("pinFmt"),
+      photo = document.getElementById("photoBox");
+
+  function fullURL(){
+    return "https://images.crabcrop.org/kX7f2aQ9/" +
+      crops[state.crop].text + "/" + fmts[state.fmt] + "/" + quals[state.q] +
+      "/scene-camera.jpg";
+  }
+  function sync(){
+    segCrop.textContent = crops[state.crop].text;
+    segFmt.textContent = fmts[state.fmt];
+    segQ.textContent = quals[state.q];
+    pinOp.textContent = crops[state.crop].text;
+    pinFmt.textContent = fmts[state.fmt];
+    photo.classList.remove("wide","tall");
+    if (crops[state.crop].frame !== "square") photo.classList.add(crops[state.crop].frame);
+  }
+  segCrop.addEventListener("click", function(){ state.crop = (state.crop+1)%crops.length; sync(); });
+  segFmt.addEventListener("click", function(){ state.fmt = (state.fmt+1)%fmts.length; sync(); });
+  segQ.addEventListener("click", function(){ state.q = (state.q+1)%quals.length; sync(); });
+
+  var copyBtn = document.getElementById("copyBtn");
+  copyBtn.addEventListener("click", function(){
+    var done = function(){
+      copyBtn.textContent = "Copied";
+      setTimeout(function(){ copyBtn.textContent = "Copy the URL"; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(fullURL()).then(done, done);
+    } else { done(); }
+  });
+
+  /* ---- Snap: click him, he names an operation ---- */
+  var ops = ["rotate(90)","grayscale()","blur(4)","flip(h)","sharpen(120)","format(jxl)"];
+  var oi = 0, bubbleTimer = null;
+  var snapBtn = document.getElementById("snapBtn"), bubble = document.getElementById("snapBubble");
+  function snapSpeak(){
+    bubble.textContent = ops[oi % ops.length]; oi++;
+    bubble.classList.add("show");
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(function(){ bubble.classList.remove("show"); }, 2400);
+  }
+  snapBtn.addEventListener("click", snapSpeak);
+  snapBtn.addEventListener("keydown", function(e){
+    if (e.key === "Enter" || e.key === " "){ snapSpeak(); e.preventDefault(); }
+  });
+
+  /* ---- The shallows slider: the line moves vertically ---- */
+  var slider = document.getElementById("slider"), clip = document.getElementById("clip"),
+      divider = document.getElementById("divider"), handle = document.getElementById("handle");
+  var pct = 45;
+  function setPct(p){
+    pct = Math.max(4, Math.min(96, p));
+    clip.style.clipPath = "inset(0 0 " + (100-pct) + "% 0)";
+    divider.style.top = pct + "%";
+    handle.style.top = pct + "%";
+    slider.setAttribute("aria-valuenow", Math.round(pct));
+  }
+  setPct(45);
+  var dragging = false;
+  function fromEvent(e){
+    var r = slider.getBoundingClientRect();
+    setPct(((e.clientY - r.top) / r.height) * 100);
+  }
+  slider.addEventListener("pointerdown", function(e){ dragging = true; slider.setPointerCapture(e.pointerId); fromEvent(e); });
+  slider.addEventListener("pointermove", function(e){ if (dragging) fromEvent(e); });
+  slider.addEventListener("pointerup", function(){ dragging = false; });
+  slider.addEventListener("pointercancel", function(){ dragging = false; });
+  slider.addEventListener("keydown", function(e){
+    if (e.key === "ArrowDown"){ setPct(pct + 4); e.preventDefault(); }
+    if (e.key === "ArrowUp"){ setPct(pct - 4); e.preventDefault(); }
+  });
+
+  var afterImg = document.getElementById("afterImg");
+  document.querySelectorAll(".chip").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll(".chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); });
+      chip.setAttribute("aria-pressed","true");
+      afterImg.classList.remove("sepia","warm");
+      afterImg.style.filter = "";
+      var f = chip.getAttribute("data-f");
+      if (f === "none"){ afterImg.style.filter = "none"; }
+      else if (f === "sepia"){ afterImg.classList.add("sepia"); }
+      else if (f === "warm"){ afterImg.classList.add("warm"); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
